@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+venv/
+.venv/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+backend/ui_dist/
+
+# Build & Releases
+build/
+dist/
+outputs/
+*.exe
+*.spec.bak
+
+# Archives & Local Test Data
+*.zip
+*.mrpack
+.DS_Store
+Thumbs.db
