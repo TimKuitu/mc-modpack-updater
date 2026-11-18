@@ -12,6 +12,7 @@ const steps = [
 ]
 
 function canJump(idx: number) {
+  if (store.downloadRunning) return idx === 2
   if (idx === 0) return true
   if (idx === 1) return Boolean(store.packResult && !store.packResult.needs_shared_confirmation)
   if (idx === 2) return Boolean(store.upgradeResult)

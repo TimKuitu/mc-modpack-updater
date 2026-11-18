@@ -22,6 +22,7 @@ from mc_updater.core.models import (
     CompatStatus,
     DownloadReport,
     LoaderType,
+    ModDownloadItemState,
     ModUpgradePlan,
     PackAnalysisResult,
     ProgressEvent,
@@ -73,6 +74,9 @@ class JsApi:
         self._upgrade_result: UpgradeAnalysisResult | None = None
         self._download_report: DownloadReport | None = None
         self._download_dir: Path = get_app_data_dir() / "downloads"
+        self._session_dl_dir: Path | None = None
+        self._download_cancel_event: threading.Event | None = None
+        self._download_item_states: dict[str, dict[str, Any]] = {}
 
         # 进度推送（100ms 节流）
         self._last_progress_ts = 0.0
@@ -84,6 +88,7 @@ class JsApi:
             "message": "",
             "error": "",
             "report": None,
+            "item_states": {},
         }
 
     def attach_window(self, window: webview.Window) -> None:
@@ -210,6 +215,8 @@ class JsApi:
             self._pack_result = result
             self._upgrade_result = None
             self._download_report = None
+            self._session_dl_dir = None
+            self._download_item_states = {}
             return self._ok(result.model_dump())
         except Exception as exc:
             return self._err(str(exc))
@@ -275,6 +282,8 @@ class JsApi:
 
             res = self._runner.run_coro(_run())
             self._upgrade_result = res
+            self._download_report = None
+            self._download_item_states = {}
             return self._ok(res.model_dump())
         except Exception as exc:
             return self._err(str(exc))
@@ -354,9 +363,14 @@ class JsApi:
             return self._err("已有下载任务正在进行中")
 
         task_id = str(uuid.uuid4())
-        session_dl_dir = self._download_dir / task_id[:8]
+        if self._session_dl_dir is None:
+            self._session_dl_dir = self._download_dir / task_id[:8]
+        session_dl_dir = self._session_dl_dir
         plans = list(self._upgrade_result.plans)
         settings = self._settings
+        cancel_event = threading.Event()
+        self._download_cancel_event = cancel_event
+        self._download_item_states = {}
 
         self._task_state = {
             "running": True,
@@ -366,7 +380,12 @@ class JsApi:
             "message": "准备开始下载...",
             "error": "",
             "report": None,
+            "item_states": self._download_item_states,
         }
+
+        def _on_item_update(item: ModDownloadItemState) -> None:
+            self._download_item_states[item.uid] = item.model_dump()
+            self._task_state["item_states"] = self._download_item_states
 
         async def _job() -> None:
             try:
@@ -376,28 +395,46 @@ class JsApi:
                     settings,
                     skip_modrinth_files=skip_modrinth_files,
                     on_progress=lambda cur, tot, msg: self._emit_progress(
-                        ProgressEvent(task_id=task_id, stage="downloading", current=cur, total=tot, message=msg)
+                        ProgressEvent(
+                            task_id=task_id,
+                            stage="downloading",
+                            current=cur,
+                            total=tot,
+                            message=msg,
+                            detail={"item_states": dict(self._download_item_states)},
+                        )
                     ),
+                    on_item_update=_on_item_update,
+                    cancel_event=cancel_event,
                 )
                 self._download_report = report
+                self._download_item_states = {uid: st.model_dump() for uid, st in report.item_states.items()}
+                stage = "cancelled" if report.cancelled else "done"
+                msg = (
+                    f"下载已中断（已保留 {len(report.downloaded_files)} 个已下载 Mod）"
+                    if report.cancelled
+                    else "下载与校验完成"
+                )
+                report_dict = report.model_dump()
                 self._task_state.update(
                     {
                         "running": False,
-                        "stage": "done",
+                        "stage": stage,
                         "current": 1,
                         "total": 1,
-                        "message": "下载与校验完成",
-                        "report": report.model_dump(),
+                        "message": msg,
+                        "report": report_dict,
+                        "item_states": self._download_item_states,
                     }
                 )
                 self._emit_progress(
                     ProgressEvent(
                         task_id=task_id,
-                        stage="done",
+                        stage=stage,
                         current=1,
                         total=1,
-                        message="下载与校验完成",
-                        detail={"report": report.model_dump()},
+                        message=msg,
+                        detail={"report": report_dict, "item_states": dict(self._download_item_states)},
                     ),
                     force=True,
                 )
@@ -406,12 +443,24 @@ class JsApi:
                     {"running": False, "stage": "error", "error": str(exc), "message": f"下载失败：{exc}"}
                 )
                 self._emit_progress(
-                    ProgressEvent(task_id=task_id, stage="error", message=str(exc)),
+                    ProgressEvent(
+                        task_id=task_id,
+                        stage="error",
+                        message=str(exc),
+                        detail={"item_states": dict(self._download_item_states)},
+                    ),
                     force=True,
                 )
 
         self._runner.submit_coro(_job())
         return self._ok({"task_id": task_id})
+
+    def cancel_download(self) -> dict[str, Any]:
+        if self._task_state.get("running") and self._download_cancel_event is not None:
+            self._download_cancel_event.set()
+            self._task_state["message"] = "正在中断下载，已完成的 Mod 将保留..."
+            return self._ok(True)
+        return self._ok(False)
 
     def get_task_state(self) -> dict[str, Any]:
         return self._ok(self._task_state)

@@ -176,11 +176,33 @@ class AppSettings(BaseModel):
     skip_modrinth_download_for_mrpack: bool = False
 
 
+class ModDownloadStatus(str, Enum):
+    PENDING = "pending"
+    DOWNLOADING = "downloading"
+    DOWNLOADED = "downloaded"
+    SKIPPED_FAST = "skipped_fast"
+    KEEP_ORIGINAL = "keep_original"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class ModDownloadItemState(BaseModel):
+    uid: str
+    status: ModDownloadStatus = ModDownloadStatus.PENDING
+    file_path: str | None = None
+    error: str = ""
+    downloaded_bytes: int = 0
+    total_bytes: int = 0
+
+
 class DownloadReport(BaseModel):
     downloaded_files: dict[str, str] = Field(default_factory=dict)  # uid -> local file path
     verified_hashes: dict[str, FileHashes] = Field(default_factory=dict)
     failed_items: list[dict[str, str]] = Field(default_factory=list)
     skipped_modrinth_count: int = 0
+    cancelled: bool = False
+    item_states: dict[str, ModDownloadItemState] = Field(default_factory=dict)
 
 
 class ExportResult(BaseModel):

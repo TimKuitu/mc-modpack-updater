@@ -6,6 +6,9 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 
+from mc_updater import __version__
+
+
 def ensure_app_icon(ico_path: Path) -> None:
     ico_path.parent.mkdir(parents=True, exist_ok=True)
     if ico_path.exists():
@@ -25,7 +28,7 @@ def main() -> None:
     repo_dir = backend_dir.parent
     assets_ico = repo_dir / "assets" / "app.ico"
     build_dir = repo_dir / "build" / "pyinstaller"
-    outputs_dir = repo_dir / "dist"
+    outputs_dir = repo_dir / "exe"
     ui_dist = backend_dir / "ui_dist" / "index.html"
 
     if not ui_dist.is_file():
@@ -49,7 +52,7 @@ def main() -> None:
     ]
     print("Running:", " ".join(cmd))
     subprocess.run(cmd, cwd=str(backend_dir), check=True)
-    print("Build finished:", outputs_dir / "MC整合包升级助手-v1.0.0.exe")
+    print("Build finished:", outputs_dir / f"MC整合包升级助手-v{__version__}.exe")
 
 
 if __name__ == "__main__":

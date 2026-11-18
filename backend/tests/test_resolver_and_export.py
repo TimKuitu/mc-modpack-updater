@@ -13,11 +13,14 @@ from mc_updater.clients.modrinth import ModrinthClient
 from mc_updater.core.hashing import compute_bytes_hashes
 from mc_updater.core.models import (
     AppSettings,
+    CandidateVersion,
     CompatStatus,
     ConfigItem,
     LoaderType,
+    ModDownloadStatus,
     ModEntry,
     ModPlatform,
+    ModUpgradePlan,
 )
 from mc_updater.downloader.download_manager import download_upgrade_plans
 from mc_updater.exporter.backup_exporter import export_config_backup_zip
@@ -296,3 +299,97 @@ async def test_full_upgrade_dep_download_and_mrpack_export(tmp_path: Path) -> No
         idx = json.loads(zf.read("modrinth.index.json").decode("utf-8"))
         assert idx["dependencies"]["minecraft"] == "26.1"
         assert idx["dependencies"]["fabric-loader"] == "0.16.10"
+
+
+@pytest.mark.asyncio
+async def test_download_cancel_keeps_files_and_resumes(tmp_path: Path) -> None:
+    import threading
+
+    bytes_a = b"PK\x03\x04mod-a-content"
+    bytes_b = b"PK\x03\x04mod-b-content"
+    ha = compute_bytes_hashes(bytes_a)
+    hb = compute_bytes_hashes(bytes_b)
+
+    requested_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        requested_urls.append(url)
+        if url.endswith("mod-a.jar"):
+            return httpx.Response(200, content=bytes_a)
+        if url.endswith("mod-b.jar"):
+            return httpx.Response(200, content=bytes_b)
+        return httpx.Response(404)
+
+    plans = [
+        ModUpgradePlan(
+            uid="a",
+            mod=ModEntry(uid="a", filename="old-a.jar", display_name="Mod A", platform=ModPlatform.MODRINTH),
+            status=CompatStatus.UPGRADABLE,
+            selected_candidate=CandidateVersion(
+                platform=ModPlatform.MODRINTH,
+                project_id="pa",
+                version_id="va",
+                version_number="1.0",
+                download_url="https://cdn.modrinth.com/mod-a.jar",
+                filename="mod-a.jar",
+                file_size=len(bytes_a),
+                sha1=ha.sha1,
+                sha512=ha.sha512,
+            ),
+        ),
+        ModUpgradePlan(
+            uid="b",
+            mod=ModEntry(uid="b", filename="old-b.jar", display_name="Mod B", platform=ModPlatform.MODRINTH),
+            status=CompatStatus.UPGRADABLE,
+            selected_candidate=CandidateVersion(
+                platform=ModPlatform.MODRINTH,
+                project_id="pb",
+                version_id="vb",
+                version_number="1.0",
+                download_url="https://cdn.modrinth.com/mod-b.jar",
+                filename="mod-b.jar",
+                file_size=len(bytes_b),
+                sha1=hb.sha1,
+                sha512=hb.sha512,
+            ),
+        ),
+    ]
+
+    dl_dir = tmp_path / "dl"
+    cancel_ev = threading.Event()
+
+    def on_item(st) -> None:
+        if st.uid == "a" and st.status == ModDownloadStatus.DOWNLOADED:
+            cancel_ev.set()
+
+    report1 = await download_upgrade_plans(
+        plans,
+        dl_dir,
+        AppSettings(use_mcim_mirror=False, concurrency=1),
+        on_item_update=on_item,
+        cancel_event=cancel_ev,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert report1.cancelled is True
+    assert "a" in report1.downloaded_files
+    assert (dl_dir / "mod-a.jar").is_file()
+    assert report1.item_states["a"].status == ModDownloadStatus.DOWNLOADED
+    assert report1.item_states["b"].status == ModDownloadStatus.CANCELLED
+
+    # 恢复下载：mod-a.jar 应直接复用本地文件，不再发起网络请求
+    requested_urls.clear()
+    report2 = await download_upgrade_plans(
+        plans,
+        dl_dir,
+        AppSettings(use_mcim_mirror=False, concurrency=2),
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert report2.cancelled is False
+    assert "a" in report2.downloaded_files
+    assert "b" in report2.downloaded_files
+    assert report2.item_states["a"].status == ModDownloadStatus.DOWNLOADED
+    assert report2.item_states["b"].status == ModDownloadStatus.DOWNLOADED
+    assert requested_urls == ["https://cdn.modrinth.com/mod-b.jar"]

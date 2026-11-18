@@ -126,10 +126,31 @@ export interface AppSettings {
   skip_modrinth_download_for_mrpack: boolean
 }
 
+export type ModDownloadStatus =
+  | 'pending'
+  | 'downloading'
+  | 'downloaded'
+  | 'skipped_fast'
+  | 'keep_original'
+  | 'skipped'
+  | 'failed'
+  | 'cancelled'
+
+export interface ModDownloadItemState {
+  uid: string
+  status: ModDownloadStatus
+  file_path?: string | null
+  error: string
+  downloaded_bytes: number
+  total_bytes: number
+}
+
 export interface DownloadReport {
   downloaded_files: Record<string, string>
   failed_items: Array<{ uid: string; name: string; error: string }>
   skipped_modrinth_count: number
+  cancelled: boolean
+  item_states: Record<string, ModDownloadItemState>
 }
 
 export interface ExportResult {

@@ -2,6 +2,7 @@ import type {
   AppSettings,
   ExportResult,
   GameVersionOption,
+  ModDownloadItemState,
   PackAnalysisResult,
   ProgressEvent,
   UpgradeAnalysisResult,
@@ -94,6 +95,7 @@ export const desktopApi = {
   openUrlInBrowser: (url: string) => callApi<boolean>('open_url_in_browser', url),
   startDownload: (skipModrinth: boolean) =>
     callApi<{ task_id: string }>('start_download', skipModrinth),
+  cancelDownload: () => callApi<boolean>('cancel_download'),
   getTaskState: () =>
     callApi<{
       running: boolean
@@ -103,6 +105,7 @@ export const desktopApi = {
       message: string
       error: string
       report?: unknown
+      item_states?: Record<string, ModDownloadItemState>
     }>('get_task_state'),
   exportMrpack: (
     outputPath: string,

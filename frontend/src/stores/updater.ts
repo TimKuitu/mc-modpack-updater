@@ -7,6 +7,7 @@ import type {
   ExportResult,
   GameVersionOption,
   LoaderType,
+  ModDownloadItemState,
   PackAnalysisResult,
   UpgradeAnalysisResult,
 } from '../types/api'
@@ -37,10 +38,13 @@ export const useUpdaterStore = defineStore('updater', () => {
   const upgradeResult = ref<UpgradeAnalysisResult | null>(null)
 
   const downloadRunning = ref(false)
+  const downloadCancelling = ref(false)
+  const downloadCancelled = ref(false)
   const downloadCurrent = ref(0)
   const downloadTotal = ref(0)
   const downloadMessage = ref('')
   const downloadReport = ref<DownloadReport | null>(null)
+  const downloadItemStates = ref<Record<string, ModDownloadItemState>>({})
 
   const exportResult = ref<ExportResult | null>(null)
   const backupResult = ref<{ output_path: string; file_size: number; file_count: number } | null>(
@@ -91,10 +95,13 @@ export const useUpdaterStore = defineStore('updater', () => {
     targetLoaderVersion,
     upgradeResult,
     downloadRunning,
+    downloadCancelling,
+    downloadCancelled,
     downloadCurrent,
     downloadTotal,
     downloadMessage,
     downloadReport,
+    downloadItemStates,
     exportResult,
     backupResult,
     selectedConfigPaths,

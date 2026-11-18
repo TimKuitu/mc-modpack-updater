@@ -1,6 +1,6 @@
 [project]
 name = "mc-modpack-updater"
-version = "1.0.0"
+version = "1.0.1"
 description = "MC 整合包升级助手 — 面向 PCL2 / PCL-CE 与 26.1+ 年份制版本的整合包识别、升级与导出桌面工具"
 requires-python = ">=3.11,<3.13"
 dependencies = [

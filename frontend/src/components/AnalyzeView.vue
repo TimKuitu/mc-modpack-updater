@@ -63,6 +63,9 @@ async function runCheck() {
       store.targetLoaderVersion,
       store.settings.include_beta_by_default
     )
+    store.downloadReport = null
+    store.downloadItemStates = {}
+    store.downloadCancelled = false
     ElMessage.success('兼容性检测与依赖解析完成')
   } catch (err: unknown) {
     ElMessage.error((err as Error).message)

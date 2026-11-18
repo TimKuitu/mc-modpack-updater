@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
+from mc_updater import __version__
 
 datas = [("ui_dist", "ui_dist")]
 binaries = []
@@ -52,7 +53,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="MC整合包升级助手-v1.0.0",
+    name=f"MC整合包升级助手-v{__version__}",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
